@@ -30,7 +30,7 @@
   "devDependencies": {
     "@types/node": "^22.19.1",
     "@typescript-eslint/eslint-plugin": "^8.54.0",
-    "@typescript-eslint/parser": "^8.49.0",
+    "@typescript-eslint/parser": "^8.57.2",
     "eslint": "^9.39.2",
     "globals": "^16.5.0",
     "prettier": "^3.7.3",
