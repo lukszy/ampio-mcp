@@ -1,78 +1,41 @@
-import { writeFile } from "node:fs/promises";
 import type { Ampio, RawDevice, RawGroup } from "./ampio.ts";
 import { logger } from "./logger.ts";
 
-const TYPE_LABEL: Record<string, string> = {
-  przekaznik: "relay",
-  led: "LED",
-  reg: "thermostat",
-  temp: "temperature",
-  roleta_procenty: "blind",
-  flaga: "flag",
-  lin_wej: "analog-in",
-  wej: "input",
-  custom: "custom",
-  detekcja: "presence",
-  symulacja: "simulation",
-  rgb: "RGB",
-};
-
-function parseState(stanJson: string | null, typ: string): string {
-  if (!stanJson) return "—";
-  try {
-    const s = JSON.parse(stanJson);
-    const val = String(s.state ?? "").trim();
-    switch (typ) {
-      case "przekaznik":
-      case "led":
-        return val === "0" ? "OFF" : "ON";
-      case "reg":
-        return `${s.measureTemp}°C / set ${s.setTemperature}°C${s.state === "1" ? " [heating]" : ""}`;
-      case "temp":
-        return `${val}°C`;
-      case "roleta_procenty":
-        return `${val}%`;
-      case "lin_wej":
-        return val;
-      default:
-        return val;
-    }
-  } catch {
-    return "?";
-  }
+export interface DeviceMap {
+  devices: Map<number, RawDevice>;
+  groups: Map<number, RawGroup>;
+  groupToDevices: Map<number, number[]>;
+  updatedAt: Date;
 }
 
-function renderTable(devices: RawDevice[]): string {
-  if (devices.length === 0) return "";
-  const rows = devices.map((d) => {
-    const label = TYPE_LABEL[d.typ_komponentu] ?? d.typ_komponentu;
-    const state = parseState(d.stan_json, d.typ_komponentu);
-    return `| ${d.id} | ${d.opis_menu} | ${label} | ${state} |`;
-  });
-  return ["| ID | Name | Type | State |", "|----|------|------|-------|", ...rows].join("\n");
-}
-
-export async function buildAndSaveDeviceMap(ampio: Ampio, outputPath: string): Promise<void> {
-  const [devices, groups, groupDevices] = await Promise.all([
+export async function buildDeviceMap(ampio: Ampio): Promise<DeviceMap> {
+  const [rawDevices, rawGroups, rawGroupDevices] = await Promise.all([
     ampio.fetchDevicesRaw(),
     ampio.fetchGroupsRaw(),
     ampio.fetchGroupDevicesRaw(),
   ]);
 
-  const deviceById = new Map<number, RawDevice>(devices.map((d) => [d.id, d]));
+  const devices = new Map<number, RawDevice>(rawDevices.map((d) => [d.id, d]));
+  const groups = new Map<number, RawGroup>(rawGroups.map((g) => [g.id, g]));
 
-  // Build group → device list
-  const groupToDeviceIds = new Map<number, number[]>();
-  for (const gd of groupDevices) {
-    const list = groupToDeviceIds.get(gd.id_grupy) ?? [];
+  const groupToDevices = new Map<number, number[]>();
+  for (const gd of rawGroupDevices) {
+    const list = groupToDevices.get(gd.id_grupy) ?? [];
     list.push(gd.id_obiektu);
-    groupToDeviceIds.set(gd.id_grupy, list);
+    groupToDevices.set(gd.id_grupy, list);
   }
-  const assignedIds = new Set(groupDevices.map((gd) => gd.id_obiektu));
 
-  // Build group tree
+  logger.debug({ devices: devices.size, groups: groups.size }, "Device map refreshed");
+  return { devices, groups, groupToDevices, updatedAt: new Date() };
+}
+
+export function renderDeviceMapMarkdown(map: DeviceMap): string {
+  const { devices, groups, groupToDevices } = map;
+
+  const assignedIds = new Set([...groupToDevices.values()].flat());
+
   const childrenOf = new Map<number, RawGroup[]>();
-  for (const g of groups) {
+  for (const g of groups.values()) {
     const list = childrenOf.get(g.id_rodzica) ?? [];
     list.push(g);
     childrenOf.set(g.id_rodzica, list);
@@ -80,24 +43,39 @@ export async function buildAndSaveDeviceMap(ampio: Ampio, outputPath: string): P
 
   const lines: string[] = [
     "# Ampio Device Map",
-    `> Generated: ${new Date().toISOString()}`,
+    `> Updated: ${map.updatedAt.toISOString()}`,
     ">",
     "> Use device IDs when calling ampio_set_device_simple, ampio_set_device_value, etc.",
     "",
   ];
 
-  function renderGroup(group: RawGroup, depth: number): void {
-    const heading = "#".repeat(Math.min(depth + 2, 6));
-    lines.push(`${heading} ${group.opis_menu} (group id: ${group.id})`);
-    lines.push("");
-
-    const ids = groupToDeviceIds.get(group.id) ?? [];
-    const devs = ids.map((id) => deviceById.get(id)).filter((d): d is RawDevice => !!d);
-    if (devs.length > 0) {
-      lines.push(renderTable(devs));
-      lines.push("");
+  function extractState(stanJson: string | null): string {
+    if (!stanJson) return "—";
+    try {
+      const { on: _on, ...rest } = JSON.parse(stanJson);
+      return Object.entries(rest)
+        .map(([k, v]) => `${k}=${String(v).trim()}`)
+        .join(", ");
+    } catch {
+      return stanJson.trim();
     }
+  }
 
+  function renderTable(ids: number[]): void {
+    const devs = ids.map((id) => devices.get(id)).filter((d): d is RawDevice => !!d);
+    if (devs.length === 0) return;
+    lines.push("| ID | Name | Type | State |");
+    lines.push("|----|------|------|-------|");
+    for (const d of devs) {
+      lines.push(`| ${d.id} | ${d.opis_menu} | ${d.typ_komponentu} | ${extractState(d.stan_json)} |`);
+    }
+    lines.push("");
+  }
+
+  function renderGroup(group: RawGroup, depth: number): void {
+    lines.push(`${"#".repeat(Math.min(depth + 2, 6))} ${group.opis_menu} (group id: ${group.id})`);
+    lines.push("");
+    renderTable(groupToDevices.get(group.id) ?? []);
     for (const child of childrenOf.get(group.id) ?? []) {
       renderGroup(child, depth + 1);
     }
@@ -107,17 +85,12 @@ export async function buildAndSaveDeviceMap(ampio: Ampio, outputPath: string): P
     renderGroup(topGroup, 0);
   }
 
-  const ungrouped = devices.filter(
-    (d) => !assignedIds.has(d.id) && d.typ_komponentu !== "custom",
-  );
-  if (ungrouped.length > 0) {
+  const ungroupedIds = [...devices.keys()].filter((id) => !assignedIds.has(id));
+  if (ungroupedIds.length > 0) {
     lines.push("## Ungrouped");
     lines.push("");
-    lines.push(renderTable(ungrouped));
-    lines.push("");
+    renderTable(ungroupedIds);
   }
 
-  const markdown = lines.join("\n");
-  await writeFile(outputPath, markdown, "utf-8");
-  logger.info({ outputPath, devices: devices.length, groups: groups.length }, "Device map saved");
+  return lines.join("\n");
 }

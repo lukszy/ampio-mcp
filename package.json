@@ -28,18 +28,12 @@
     "node": ">=22.18.0"
   },
   "devDependencies": {
-    "@commitlint/cli": "^20.1.0",
-    "@commitlint/config-conventional": "^20.2.0",
-    "@semantic-release/changelog": "^6.0.3",
-    "@semantic-release/git": "^10.0.1",
     "@types/node": "^22.19.1",
     "@typescript-eslint/eslint-plugin": "^8.54.0",
     "@typescript-eslint/parser": "^8.49.0",
-    "concurrently": "^9.2.1",
     "eslint": "^9.39.2",
     "globals": "^16.5.0",
     "prettier": "^3.7.3",
-    "semantic-release": "^25.0.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
