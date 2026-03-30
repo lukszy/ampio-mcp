@@ -1,7 +1,5 @@
 import express from "express";
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
@@ -9,16 +7,30 @@ import { logger } from "./logger.ts";
 import { getConfig } from "./config.ts";
 import { Ampio } from "./ampio.ts";
 import { registerAmpioMcpTools } from "./ampio-tools.ts";
-import { buildAndSaveDeviceMap } from "./device-mapper.ts";
+import { buildDeviceMap, renderDeviceMapMarkdown } from "./device-mapper.ts";
+import type { DeviceMap } from "./device-mapper.ts";
 
-const DEVICE_MAP_PATH = path.join(process.cwd(), "device-map.md");
+const REFRESH_INTERVAL_MS = 30_000;
 
-async function readDeviceMap(): Promise<string> {
-  try {
-    return await readFile(DEVICE_MAP_PATH, "utf-8");
-  } catch {
-    return "Device map not yet available. Restart the server or wait for startup.";
-  }
+let deviceMap: DeviceMap | null = null;
+
+function getDeviceMapMarkdown(): string {
+  return deviceMap ? renderDeviceMapMarkdown(deviceMap) : "Device map not yet available — loading...";
+}
+
+function startDeviceMapRefresh(ampio: Ampio): void {
+  const refresh = () =>
+    buildDeviceMap(ampio)
+      .then((map) => { deviceMap = map; })
+      .catch((err: unknown) => {
+        logger.warn(
+          { error: err instanceof Error ? err.message : String(err) },
+          "Device map refresh failed",
+        );
+      });
+
+  refresh();
+  setInterval(refresh, REFRESH_INTERVAL_MS);
 }
 
 const getServer = () => {
@@ -46,29 +58,25 @@ const getServer = () => {
         "Read this first to find device IDs before calling control tools.",
       mimeType: "text/markdown",
     },
-    async () => {
-      const text = await readDeviceMap();
-      return { contents: [{ uri: "ampio://device-map", text, mimeType: "text/markdown" }] };
-    },
+    () => Promise.resolve({
+      contents: [{ uri: "ampio://device-map", text: getDeviceMapMarkdown(), mimeType: "text/markdown" }],
+    }),
   );
 
   server.prompt(
     "ampio-device-map",
     { description: "Inject Ampio device map as context — shows all rooms, device IDs, types and current states." },
-    async () => {
-      const text = await readDeviceMap();
-      return {
-        messages: [
-          {
-            role: "user",
-            content: {
-              type: "text",
-              text: `Here is the current Ampio smart home device map. Use the device IDs from this map when calling control tools.\n\n${text}`,
-            },
+    () => Promise.resolve({
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: `Here is the current Ampio smart home device map. Use the device IDs from this map when calling control tools.\n\n${getDeviceMapMarkdown()}`,
           },
-        ],
-      };
-    },
+        },
+      ],
+    }),
   );
 
   return server;
@@ -152,19 +160,13 @@ app.get("/mcp", mcpHandler);
 async function main() {
   const config = getConfig();
 
-  // Build device map on startup (non-blocking — server starts regardless)
   const ampio = new Ampio({
     AMPIO_URL: config.AMPIO_URL,
     AMPIO_PORT: config.AMPIO_PORT,
     AMPIO_LOGIN: config.AMPIO_LOGIN,
     AMPIO_PASSWORD: config.AMPIO_PASSWORD,
   });
-  buildAndSaveDeviceMap(ampio, DEVICE_MAP_PATH).catch((err: unknown) => {
-    logger.warn(
-      { error: err instanceof Error ? err.message : String(err) },
-      "Device map build failed on startup",
-    );
-  });
+  startDeviceMapRefresh(ampio);
 
   // Graceful shutdown handling
   process.on("SIGTERM", () => {

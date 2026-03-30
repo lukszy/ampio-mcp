@@ -85,7 +85,7 @@ export class Ampio {
       response = await fetch(url, {
         method: "GET",
         headers: {
-          Authorization: 'Basic YWRtaW46diZlZjhEbDh2SlM4Y1U4RWpOaVRHJkE2ZDdOM0h2RCQ=', // this.#basicAuthHeader(),
+          Authorization: this.#basicAuthHeader(),
           Accept: "application/json",
         },
       });
