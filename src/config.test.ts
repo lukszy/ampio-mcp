@@ -4,6 +4,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const VALID_BASE: Record<string, string> = {
   NODE_ENV: "test",
   LOG_LEVEL: "info",
+  AMPIO_URL: "192.168.1.100",
+  AMPIO_PASSWORD: "secret",
+  AMPIO_LOGIN: "admin",
 };
 
 async function loadConfig(env: Record<string, string>) {
@@ -22,11 +25,15 @@ beforeEach(() => {
 });
 
 describe("getConfig", () => {
-  it("returns defaults when no env vars set", async () => {
+  it("throws when mandatory AMPIO_* env vars are missing", async () => {
+    const { getConfig } = await loadConfig({ AMPIO_URL: "", AMPIO_PASSWORD: "", AMPIO_LOGIN: "" });
+    expect(() => getConfig()).toThrow(/AMPIO/);
+  });
+
+  it("returns defaults when no optional env vars set", async () => {
     const { getConfig } = await loadConfig({ NODE_ENV: "development" });
     const config = getConfig();
     expect(config.PORT).toBe(3000);
-    expect(config.AMPIO_URL).toBe("192.168.1.100");
     expect(config.AMPIO_PORT).toBe(8060);
     expect(config.NODE_ENV).toBe("development");
     expect(config.LOG_LEVEL).toBe("info");
@@ -53,7 +60,7 @@ describe("getConfig", () => {
   });
 
   it("falls back to AMPIO_USERNAME when AMPIO_LOGIN is empty", async () => {
-    const { getConfig } = await loadConfig({ AMPIO_USERNAME: "fallback" });
+    const { getConfig } = await loadConfig({ AMPIO_LOGIN: "", AMPIO_USERNAME: "fallback" });
     expect(getConfig().AMPIO_LOGIN).toBe("fallback");
   });
 

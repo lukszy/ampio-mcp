@@ -11,7 +11,7 @@ MCP server for the **Ampio smart home system**. Exposes Ampio's HTTP API as MCP 
 
 ## Requirements
 
-- Node.js ≥ 22.18
+- [Bun](https://bun.sh) ≥ 1.2
 - Ampio controller reachable over HTTP (default port 8060)
 - Ampio HTTP API credentials
 
@@ -20,7 +20,7 @@ MCP server for the **Ampio smart home system**. Exposes Ampio's HTTP API as MCP 
 ### 1. Install dependencies
 
 ```bash
-npm install
+bun install
 ```
 
 ### 2. Configure environment
@@ -41,8 +41,8 @@ LOG_LEVEL=info             # error | warn | info | debug
 ### 3. Run
 
 ```bash
-npm run dev    # development with hot reload
-npm run build && npm start    # production
+bun run dev    # development with hot reload
+bun run build && bun start    # production
 ```
 
 The MCP server listens at `http://localhost:3000/mcp`.
@@ -108,6 +108,22 @@ Or edit `~/.codex/config.json`:
   }
 }
 ```
+
+### Hermes (Nous Research)
+
+```bash
+hermes mcp add --url http://localhost:3000/mcp ampio
+```
+
+Or edit `~/.hermes/config.yaml`:
+
+```yaml
+mcp_servers:
+  ampio:
+    url: "http://localhost:3000/mcp"
+```
+
+Then run `/reload-mcp` (or restart Hermes) and verify with `hermes mcp test ampio`.
 
 ### Claude Desktop
 
@@ -203,9 +219,9 @@ src/
 ## Development
 
 ```bash
-npm run lint          # ESLint
-npm run format        # Prettier
-npm test              # Vitest
+bun run lint          # ESLint
+bun run format        # Prettier
+bun test              # Vitest
 ```
 
 See `CLAUDE.md` / `AGENTS.md` for coding standards.

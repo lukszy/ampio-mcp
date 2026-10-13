@@ -41,7 +41,7 @@ export default defineConfig(({ command }) => ({
         format: "es",
       },
     },
-    target: "node22",
+    target: "es2022",
     outDir: "dist",
     emptyOutDir: true,
     ssr: true,
@@ -53,5 +53,15 @@ export default defineConfig(({ command }) => ({
   },
   ssr: {
     external: ["@modelcontextprotocol/sdk", "express", "zod"],
+  },
+  test: {
+    // Mandatory AMPIO_* env vars need valid values in every test run
+    env: {
+      AMPIO_URL: "192.168.1.100",
+      AMPIO_PORT: "8060",
+      AMPIO_LOGIN: "admin",
+      AMPIO_PASSWORD: "secret",
+      LOG_LEVEL: "error",
+    },
   },
 }));

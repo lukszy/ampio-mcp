@@ -10,5 +10,5 @@ updates:
     schedule:
       interval: weekly
     ignore:
-      - dependency-name: "@types/node"
+      - dependency-name: "@types/bun"
         update-types: ["version-update:semver-major"]
